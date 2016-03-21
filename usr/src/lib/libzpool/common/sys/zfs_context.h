@@ -259,6 +259,13 @@ extern gid_t crgetgid(cred_t *cr);
 extern int crgetngroups(cred_t *cr);
 extern gid_t *crgetgroups(cred_t *cr);
 
+#define secpolicy_nfs(cr) (0)
+#define secpolicy_smb(cr) (0)
+#define secpolicy_zfs(cr) (0)
+#define secpolicy_zinject(cr) (0)
+#define secpolicy_sys_config(cr, co) (0)
+#define groupmember(gid, cr) (0)
+
 /*
  * Condition variables
  */
@@ -482,10 +489,13 @@ extern void vn_close(vnode_t *vp);
 extern vnode_t *rootdir;
 
 #include <sys/file.h>		/* for FREAD, FWRITE, etc */
+#define	FKIOCTL		0x80000000	/* ioctl addresses are from kernel */
+
 
 /*
  * Random stuff
  */
+#define is_system_labeled() (0)
 #define	ddi_get_lbolt()		(gethrtime() >> 23)
 #define	ddi_get_lbolt64()	(gethrtime() >> 23)
 #define	hz	119	/* frequency when using gethrtime() >> 23 for lbolt */
@@ -594,10 +604,6 @@ extern int kobj_read_file(struct _buf *file, char *buf, unsigned size,
     unsigned off);
 extern void kobj_close_file(struct _buf *file);
 extern int kobj_get_filesize(struct _buf *file, uint64_t *size);
-extern int zfs_secpolicy_snapshot_perms(const char *name, cred_t *cr);
-extern int zfs_secpolicy_rename_perms(const char *from, const char *to,
-    cred_t *cr);
-extern int zfs_secpolicy_destroy_perms(const char *name, cred_t *cr);
 extern zoneid_t getzoneid(void);
 
 /* SID stuff */
@@ -671,6 +677,16 @@ extern void bioinit(buf_t *);
 extern void biodone(buf_t *);
 extern void bioerror(buf_t *, int);
 extern int geterror(buf_t *);
+
+/*
+ * Userland ioctl handling
+ */
+
+extern void zfs_user_ioctl_init(void);
+extern int copyinstr(const char *, char *, size_t, size_t *);
+extern int ddi_copyin(const void *, void *, size_t, int);
+extern int ddi_copyout(const void *, void *, size_t, int);
+
 
 #ifdef	__cplusplus
 }

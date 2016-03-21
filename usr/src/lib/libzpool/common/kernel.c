@@ -920,6 +920,8 @@ void
 kernel_init(int mode)
 {
 	extern uint_t rrw_tsd_key;
+	extern uint_t zfs_allow_log_key;
+	extern void zfs_allow_log_destroy(void *);
 
 	umem_nofail_callback(umem_out_of_memory);
 
@@ -941,6 +943,9 @@ kernel_init(int mode)
 	spa_init(mode);
 
 	tsd_create(&rrw_tsd_key, rrw_tsd_destroy);
+	tsd_create(&zfs_allow_log_key, zfs_allow_log_destroy);
+
+	zfs_user_ioctl_init();
 }
 
 void
@@ -1010,24 +1015,6 @@ gid_t *
 crgetgroups(cred_t *cr)
 {
 	return (NULL);
-}
-
-int
-zfs_secpolicy_snapshot_perms(const char *name, cred_t *cr)
-{
-	return (0);
-}
-
-int
-zfs_secpolicy_rename_perms(const char *from, const char *to, cred_t *cr)
-{
-	return (0);
-}
-
-int
-zfs_secpolicy_destroy_perms(const char *name, cred_t *cr)
-{
-	return (0);
 }
 
 ksiddomain_t *
@@ -1137,7 +1124,6 @@ bioerror(buf_t *bp, int error)
 	}
 	bp->b_error = error;
 }
-
 
 int
 geterror(struct buf *bp)

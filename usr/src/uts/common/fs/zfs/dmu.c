@@ -124,6 +124,15 @@ const dmu_object_byteswap_info_t dmu_ot_byteswap[DMU_BSWAP_NUMFUNCS] = {
 	{	zfs_acl_byteswap,	"acl"		}
 };
 
+static xuio_stats_t xuio_stats = {
+	{ "onloan_read_buf",	KSTAT_DATA_UINT64 },
+	{ "onloan_write_buf",	KSTAT_DATA_UINT64 },
+	{ "read_buf_copied",	KSTAT_DATA_UINT64 },
+	{ "read_buf_nocopy",	KSTAT_DATA_UINT64 },
+	{ "write_buf_copied",	KSTAT_DATA_UINT64 },
+	{ "write_buf_nocopy",	KSTAT_DATA_UINT64 }
+};
+
 int
 dmu_buf_hold_noread(objset_t *os, uint64_t object, uint64_t offset,
     void *tag, dmu_buf_t **dbp)

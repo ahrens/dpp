@@ -28,7 +28,7 @@ VERS= .1
 
 # include the list of ZFS sources
 include ../../../uts/common/Makefile.files
-KERNEL_OBJS = kernel.o taskq.o util.o
+KERNEL_OBJS = kernel.o taskq.o util.o zfs_user_ioctl.o
 DTRACE_OBJS = zfs.o
 
 OBJECTS=$(ZFS_COMMON_OBJS) $(ZFS_SHARED_OBJS) $(KERNEL_OBJS)
@@ -64,7 +64,7 @@ C99LMODE=	-Xc99=%all
 
 CFLAGS +=	-g $(CCVERBOSE) $(CNOGLOBAL)
 CFLAGS64 +=	-g $(CCVERBOSE)	$(CNOGLOBAL)
-LDLIBS +=	-lcmdutils -lumem -lavl -lnvpair -lz -lc -lsysevent -lmd
+LDLIBS +=	-lcmdutils -lumem -lavl -lnvpair -lz -lc -lsysevent -lmd -lsocket
 CPPFLAGS +=	$(INCS)	-DDEBUG
 
 CERRWARN +=	-_gcc=-Wno-parentheses

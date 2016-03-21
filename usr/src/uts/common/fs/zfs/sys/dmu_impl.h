@@ -256,15 +256,6 @@ typedef struct xuio_stats {
 	kstat_named_t xuiostat_wbuf_nocopy;
 } xuio_stats_t;
 
-static xuio_stats_t xuio_stats = {
-	{ "onloan_read_buf",	KSTAT_DATA_UINT64 },
-	{ "onloan_write_buf",	KSTAT_DATA_UINT64 },
-	{ "read_buf_copied",	KSTAT_DATA_UINT64 },
-	{ "read_buf_nocopy",	KSTAT_DATA_UINT64 },
-	{ "write_buf_copied",	KSTAT_DATA_UINT64 },
-	{ "write_buf_nocopy",	KSTAT_DATA_UINT64 }
-};
-
 #define	XUIOSTAT_INCR(stat, val)	\
 	atomic_add_64(&xuio_stats.stat.value.ui64, (val))
 #define	XUIOSTAT_BUMP(stat)	XUIOSTAT_INCR(stat, 1)

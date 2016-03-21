@@ -50,6 +50,7 @@ SYMBOL_VERSION ILLUMOS_0.1 {
 	lzc_get_bookmarks;
 	lzc_get_holds;
 	lzc_hold;
+	lzc_ioctl_impl;
 	lzc_receive;
 	lzc_release;
 	lzc_rollback;

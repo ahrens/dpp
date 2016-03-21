@@ -1962,7 +1962,8 @@ zpool_do_import(int argc, char **argv)
 		 * here because otherwise any attempt to discover pools will
 		 * silently fail.
 		 */
-		if (argc == 0 && !priv_ineffect(PRIV_SYS_CONFIG)) {
+		if (argc == 0 && getenv("ZFS_DAEMON_SOCKET") == NULL &&
+		    !priv_ineffect(PRIV_SYS_CONFIG)) {
 			(void) fprintf(stderr, gettext("cannot "
 			    "discover pools: permission denied\n"));
 			free(searchdirs);

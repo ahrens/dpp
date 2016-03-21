@@ -35,8 +35,11 @@
 extern "C" {
 #endif
 
+struct zfs_cmd;
+
 int libzfs_core_init(void);
 void libzfs_core_fini(void);
+int lzc_ioctl_impl(zfs_ioc_t ioc, struct zfs_cmd *cmd);
 
 int lzc_snapshot(nvlist_t *, nvlist_t *, nvlist_t **);
 int lzc_create(const char *, dmu_objset_type_t, nvlist_t *);
