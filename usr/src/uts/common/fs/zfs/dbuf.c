@@ -1236,6 +1236,7 @@ dbuf_read(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags)
 	mutex_enter(&db->db_mtx);
 	if (db->db_state == DB_UNCACHED && db->db_last_dirty != NULL &&
 	    db->db_last_dirty->dt.dl.dr_override_state == DR_OVERRIDDEN) {
+		boolean_t need_wait = B_FALSE;
                 /*
                  * This is a directio write that hasn't been synced yet.
                  * Read it back from where we just wrote it :-(
@@ -1244,6 +1245,7 @@ dbuf_read(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags)
                 if (zio == NULL) {
                         zio = zio_root(dn->dn_objset->os_spa,
                             NULL, NULL, ZIO_FLAG_CANFAIL);
+                        need_wait = B_TRUE;
                 }
 
                 zfs_dbgmsg("dbuf_read(%p) of directio write for txg %llx",
@@ -1270,7 +1272,7 @@ dbuf_read(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags)
                         rw_exit(&dn->dn_struct_rwlock);
                 DB_DNODE_EXIT(db);
 
-                if (!havepzio)
+                if (need_wait)
                         err = zio_wait(zio);
 	} else if (db->db_state == DB_CACHED) {
 		/*
