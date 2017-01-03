@@ -822,6 +822,7 @@ struct arc_write_callback {
 	arc_done_func_t	*awcb_physdone;
 	arc_done_func_t	*awcb_done;
 	arc_buf_t	*awcb_buf;
+	boolean_t	awcb_cacheable;
 };
 
 /*
@@ -5457,7 +5458,9 @@ arc_write_ready(zio_t *zio)
 	 * written. Therefore, if they're allowed then we allocate one and copy
 	 * the data into it; otherwise, we share the data directly if we can.
 	 */
-	if (zfs_abd_scatter_enabled || !arc_can_share(hdr, buf)) {
+	if (!callback->awcb_cacheable) {
+		/* nothing? */
+	} else if (zfs_abd_scatter_enabled || !arc_can_share(hdr, buf)) {
 		arc_hdr_alloc_pabd(hdr);
 
 		/*
@@ -5521,7 +5524,8 @@ arc_write_done(zio_t *zio)
 	if (zio->io_error == 0) {
 		arc_hdr_verify(hdr, zio->io_bp);
 
-		if (BP_IS_HOLE(zio->io_bp) || BP_IS_EMBEDDED(zio->io_bp)) {
+		if (BP_IS_HOLE(zio->io_bp) || BP_IS_EMBEDDED(zio->io_bp) ||
+		    !callback->awcb_cacheable) {
 			buf_discard_identity(hdr);
 		} else {
 			hdr->b_dva = *BP_IDENTITY(zio->io_bp);
@@ -5593,9 +5597,14 @@ arc_write_done(zio_t *zio)
 	kmem_free(callback, sizeof (arc_write_callback_t));
 }
 
+/*
+ * If the cacheable argument is FALSE, the buf will be left anonymous
+ * (i.e. released).
+ */
 zio_t *
 arc_write(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp, arc_buf_t *buf,
-    boolean_t l2arc, const zio_prop_t *zp, arc_done_func_t *ready,
+    boolean_t l2arc, boolean_t cacheable,
+    const zio_prop_t *zp, arc_done_func_t *ready,
     arc_done_func_t *children_ready, arc_done_func_t *physdone,
     arc_done_func_t *done, void *private, zio_priority_t priority,
     int zio_flags, const zbookmark_phys_t *zb)
@@ -5624,6 +5633,7 @@ arc_write(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp, arc_buf_t *buf,
 	callback->awcb_done = done;
 	callback->awcb_private = private;
 	callback->awcb_buf = buf;
+	callback->awcb_cacheable = cacheable;
 
 	/*
 	 * The hdr's b_pabd is now stale, free it now. A new data block
