@@ -1095,14 +1095,14 @@ static kmutex_t l2arc_feed_thr_lock;
 static kcondvar_t l2arc_feed_thr_cv;
 static uint8_t l2arc_thread_exit;
 
-static abd_t *arc_get_data_abd(arc_buf_hdr_t *, uint64_t, void *);
+static abd_t *arc_get_data_abd(arc_buf_hdr_t *, uint64_t, boolean_t, void *);
 static void *arc_get_data_buf(arc_buf_hdr_t *, uint64_t, void *);
 static void arc_get_data_impl(arc_buf_hdr_t *, uint64_t, void *);
 static void arc_free_data_abd(arc_buf_hdr_t *, abd_t *, uint64_t, void *);
 static void arc_free_data_buf(arc_buf_hdr_t *, void *, uint64_t, void *);
 static void arc_free_data_impl(arc_buf_hdr_t *hdr, uint64_t size, void *tag);
 static void arc_hdr_free_pabd(arc_buf_hdr_t *);
-static void arc_hdr_alloc_pabd(arc_buf_hdr_t *);
+static void arc_hdr_alloc_pabd(arc_buf_hdr_t *, boolean_t);
 static void arc_access(arc_buf_hdr_t *, kmutex_t *);
 static boolean_t arc_is_overflowing();
 static void arc_buf_watch(arc_buf_t *);
@@ -2799,14 +2799,15 @@ arc_buf_destroy_impl(arc_buf_t *buf)
 }
 
 static void
-arc_hdr_alloc_pabd(arc_buf_hdr_t *hdr)
+arc_hdr_alloc_pabd(arc_buf_hdr_t *hdr, boolean_t force_linear)
 {
 	ASSERT3U(HDR_GET_LSIZE(hdr), >, 0);
 	ASSERT(HDR_HAS_L1HDR(hdr));
 	ASSERT(!HDR_SHARED_DATA(hdr));
 
 	ASSERT3P(hdr->b_l1hdr.b_pabd, ==, NULL);
-	hdr->b_l1hdr.b_pabd = arc_get_data_abd(hdr, arc_hdr_size(hdr), hdr);
+	hdr->b_l1hdr.b_pabd = arc_get_data_abd(hdr, arc_hdr_size(hdr),
+	    force_linear, hdr);
 	hdr->b_l1hdr.b_byteswap = DMU_BSWAP_NUMFUNCS;
 	ASSERT3P(hdr->b_l1hdr.b_pabd, !=, NULL);
 
@@ -2842,7 +2843,8 @@ arc_hdr_free_pabd(arc_buf_hdr_t *hdr)
 
 static arc_buf_hdr_t *
 arc_hdr_alloc(uint64_t spa, int32_t psize, int32_t lsize,
-    enum zio_compress compression_type, arc_buf_contents_t type)
+    enum zio_compress compression_type, arc_buf_contents_t type,
+    boolean_t force_linear)
 {
 	arc_buf_hdr_t *hdr;
 
@@ -2870,7 +2872,7 @@ arc_hdr_alloc(uint64_t spa, int32_t psize, int32_t lsize,
 	 * the compressed or uncompressed data depending on the block
 	 * it references and compressed arc enablement.
 	 */
-	arc_hdr_alloc_pabd(hdr);
+	arc_hdr_alloc_pabd(hdr, force_linear);
 	ASSERT(refcount_is_zero(&hdr->b_l1hdr.b_refcnt));
 
 	return (hdr);
@@ -2990,7 +2992,7 @@ arc_buf_t *
 arc_alloc_buf(spa_t *spa, void *tag, arc_buf_contents_t type, int32_t size)
 {
 	arc_buf_hdr_t *hdr = arc_hdr_alloc(spa_load_guid(spa), size, size,
-	    ZIO_COMPRESS_OFF, type);
+	    ZIO_COMPRESS_OFF, type, B_FALSE);
 	ASSERT(!MUTEX_HELD(HDR_LOCK(hdr)));
 
 	arc_buf_t *buf = NULL;
@@ -3014,7 +3016,7 @@ arc_alloc_compressed_buf(spa_t *spa, void *tag, uint64_t psize, uint64_t lsize,
 	ASSERT(compression_type < ZIO_COMPRESS_FUNCTIONS);
 
 	arc_buf_hdr_t *hdr = arc_hdr_alloc(spa_load_guid(spa), psize, lsize,
-	    compression_type, ARC_BUFC_DATA);
+	    compression_type, ARC_BUFC_DATA, B_FALSE);
 	ASSERT(!MUTEX_HELD(HDR_LOCK(hdr)));
 
 	arc_buf_t *buf = NULL;
@@ -4270,16 +4272,23 @@ arc_is_overflowing(void)
 }
 
 static abd_t *
-arc_get_data_abd(arc_buf_hdr_t *hdr, uint64_t size, void *tag)
+arc_get_data_abd(arc_buf_hdr_t *hdr, uint64_t size, boolean_t force_linear,
+    void *tag)
 {
 	arc_buf_contents_t type = arc_buf_type(hdr);
 
 	arc_get_data_impl(hdr, size, tag);
 	if (type == ARC_BUFC_METADATA) {
-		return (abd_alloc(size, B_TRUE));
+		if (force_linear)
+                        return (abd_alloc_linear(size, B_TRUE));
+		else
+                        return (abd_alloc(size, B_TRUE));
 	} else {
 		ASSERT(type == ARC_BUFC_DATA);
-		return (abd_alloc(size, B_FALSE));
+		if (force_linear)
+                        return (abd_alloc_linear(size, B_FALSE));
+		else
+                        return (abd_alloc(size, B_FALSE));
 	}
 }
 
@@ -4298,7 +4307,7 @@ arc_get_data_buf(arc_buf_hdr_t *hdr, uint64_t size, void *tag)
 }
 
 /*
- * Allocate a block and return it to the caller. If we are hitting the
+ * Reserve space for a block of this size. If we are hitting the
  * hard limit for the cache size, we must sleep, waiting for the eviction
  * thread to catch up. If we're past the target size but below the hard
  * limit, we'll only signal the reclaim thread and continue on.
@@ -4922,7 +4931,8 @@ top:
 			arc_buf_hdr_t *exists = NULL;
 			arc_buf_contents_t type = BP_GET_BUFC_TYPE(bp);
 			hdr = arc_hdr_alloc(spa_load_guid(spa), psize, lsize,
-			    BP_GET_COMPRESS(bp), type);
+			    BP_GET_COMPRESS(bp), type,
+			    (*arc_flags & ARC_FLAG_FORCE_LINEAR) != 0);
 
 			if (!BP_IS_EMBEDDED(bp)) {
 				hdr->b_dva = *BP_IDENTITY(bp);
@@ -4964,7 +4974,8 @@ top:
 			 * avoid hitting an assert in remove_reference().
 			 */
 			arc_access(hdr, hash_lock);
-			arc_hdr_alloc_pabd(hdr);
+			arc_hdr_alloc_pabd(hdr,
+			    (*arc_flags & ARC_FLAG_FORCE_LINEAR) != 0);
 		}
 		ASSERT3P(hdr->b_l1hdr.b_pabd, !=, NULL);
 		size = arc_hdr_size(hdr);
@@ -5300,7 +5311,7 @@ arc_release(arc_buf_t *buf, void *tag)
 			if (arc_can_share(hdr, lastbuf)) {
 				arc_share_buf(hdr, lastbuf);
 			} else {
-				arc_hdr_alloc_pabd(hdr);
+				arc_hdr_alloc_pabd(hdr, B_FALSE);
 				abd_copy_from_buf(hdr->b_l1hdr.b_pabd,
 				    buf->b_data, psize);
 			}
@@ -5340,7 +5351,8 @@ arc_release(arc_buf_t *buf, void *tag)
 		 * Allocate a new hdr. The new hdr will contain a b_pabd
 		 * buffer which will be freed in arc_write().
 		 */
-		nhdr = arc_hdr_alloc(spa, psize, lsize, compress, type);
+		nhdr = arc_hdr_alloc(spa, psize, lsize, compress, type,
+		    B_FALSE);
 		ASSERT3P(nhdr->b_l1hdr.b_buf, ==, NULL);
 		ASSERT0(nhdr->b_l1hdr.b_bufcnt);
 		ASSERT0(refcount_count(&nhdr->b_l1hdr.b_refcnt));
@@ -5458,10 +5470,16 @@ arc_write_ready(zio_t *zio)
 	 * written. Therefore, if they're allowed then we allocate one and copy
 	 * the data into it; otherwise, we share the data directly if we can.
 	 */
+	/* LINTED */
 	if (!callback->awcb_cacheable) {
-		/* nothing? */
-	} else if (zfs_abd_scatter_enabled || !arc_can_share(hdr, buf)) {
-		arc_hdr_alloc_pabd(hdr);
+		/*
+		 * If this write is not cacheable, we have no need for
+		 * its b_pabd, because it is about to be evicted. There's
+		 * nothing to do here.
+		 */
+	} else if (callback->awcb_cacheable &&
+	    (zfs_abd_scatter_enabled || !arc_can_share(hdr, buf))) {
+		arc_hdr_alloc_pabd(hdr, B_FALSE);
 
 		/*
 		 * Ideally, we would always copy the io_abd into b_pabd, but the
@@ -5612,6 +5630,7 @@ arc_write(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp, arc_buf_t *buf,
 	arc_buf_hdr_t *hdr = buf->b_hdr;
 	arc_write_callback_t *callback;
 	zio_t *zio;
+	zio_prop_t localprop;
 
 	ASSERT3P(ready, !=, NULL);
 	ASSERT3P(done, !=, NULL);
@@ -5622,7 +5641,10 @@ arc_write(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp, arc_buf_t *buf,
 	if (l2arc)
 		arc_hdr_set_flags(hdr, ARC_FLAG_L2CACHE);
 	if (ARC_BUF_COMPRESSED(buf)) {
-		ASSERT3U(zp->zp_compress, !=, ZIO_COMPRESS_OFF);
+		localprop = *zp;
+		localprop.zp_compress = HDR_GET_COMPRESS(hdr);
+		zp = &localprop;
+
 		ASSERT3U(HDR_GET_LSIZE(hdr), !=, arc_buf_size(buf));
 		zio_flags |= ZIO_FLAG_RAW;
 	}

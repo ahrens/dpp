@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2014, 2017 by Delphix. All rights reserved.
  */
 
 #include <sys/conf.h>
@@ -172,7 +172,7 @@ sbd_zvol_alloc_read_bufs(sbd_lu_t *sl, stmf_data_buf_t *dbuf)
 	rl = zfs_range_lock(sl->sl_zvol_rl_hdl, offset, len, RL_READER);
 
 	error = dmu_buf_hold_array_by_bonus(sl->sl_zvol_bonus_hdl, offset,
-	    len, TRUE, RDTAG, &numbufs, &dbpp);
+	    len, B_TRUE, B_FALSE, RDTAG, &numbufs, &dbpp);
 
 	zfs_range_unlock(rl);
 
@@ -364,7 +364,8 @@ sbd_zvol_rele_write_bufs(sbd_lu_t *sl, stmf_data_buf_t *dbuf)
 
 		abuf = abp[i];
 		size = arc_buf_size(abuf);
-		dmu_assign_arcbuf(sl->sl_zvol_bonus_hdl, toffset, abuf, tx);
+		dmu_assign_arcbuf(sl->sl_zvol_bonus_hdl, toffset, B_FALSE,
+		    abuf, tx);
 		toffset += size;
 		resid -= size;
 	}
@@ -403,7 +404,7 @@ sbd_zvol_copy_read(sbd_lu_t *sl, uio_t *uio)
 
 	rl = zfs_range_lock(sl->sl_zvol_rl_hdl, offset, len, RL_READER);
 
-	error = dmu_read_uio_dbuf(sl->sl_zvol_bonus_hdl, uio, len);
+	error = dmu_read_uio_dbuf(sl->sl_zvol_bonus_hdl, uio, len, B_FALSE);
 
 	zfs_range_unlock(rl);
 	if (error == ECKSUM)

@@ -1282,7 +1282,7 @@ receive_write(struct receive_writer_arg *rwa, struct drr_write *drrw,
 	dmu_buf_t *bonus;
 	if (dmu_bonus_hold(rwa->os, drrw->drr_object, FTAG, &bonus) != 0)
 		return (SET_ERROR(EINVAL));
-	dmu_assign_arcbuf(bonus, drrw->drr_offset, abuf, tx);
+	dmu_assign_arcbuf(bonus, drrw->drr_offset, B_FALSE, abuf, tx);
 
 	/*
 	 * Note: If the receive fails, we want the resume stream to start
