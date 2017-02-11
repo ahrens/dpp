@@ -1255,19 +1255,10 @@ zio_write_bp_init(zio_t *zio)
 		ASSERT((zio_checksum_table[zp->zp_checksum].ci_flags &
 		    ZCHECKSUM_FLAG_DEDUP) || zp->zp_dedup_verify);
 
-		if (BP_GET_CHECKSUM(bp) == zp->zp_checksum) {
-			BP_SET_DEDUP(bp, 1);
-			zio->io_pipeline |= ZIO_STAGE_DDT_WRITE;
-			return (ZIO_PIPELINE_CONTINUE);
-		}
-
-		/*
-		 * We were unable to handle this as an override bp, treat
-		 * it as a regular write I/O.
-		 */
-		zio->io_bp_override = NULL;
-		*bp = zio->io_bp_orig;
-		zio->io_pipeline = zio->io_orig_pipeline;
+		zp->zp_checksum = BP_GET_CHECKSUM(bp);
+		BP_SET_DEDUP(bp, 1);
+		zio->io_pipeline |= ZIO_STAGE_DDT_WRITE;
+		return (ZIO_PIPELINE_CONTINUE);
 	}
 
 	return (ZIO_PIPELINE_CONTINUE);
@@ -2663,16 +2654,19 @@ zio_ddt_write(zio_t *zio)
 
 	if (zp->zp_dedup_verify && zio_ddt_collision(zio, ddt, dde)) {
 		/*
-		 * If we're using a weak checksum, upgrade to a strong checksum
-		 * and try again.  If we're already using a strong checksum,
-		 * we can't resolve it, so just convert to an ordinary write.
-		 * (And automatically e-mail a paper to Nature?)
+		 * If we're using a weak checksum, upgrade to a strong
+		 * checksum and try again, ignoring an override BP if
+		 * present (because an override BP would override
+		 * zp_checksum).  If we're already using a strong checksum,
+		 * we can't resolve it, so just convert to an ordinary
+		 * write. (And automatically e-mail a paper to Nature?)
 		 */
 		if (!(zio_checksum_table[zp->zp_checksum].ci_flags &
 		    ZCHECKSUM_FLAG_DEDUP)) {
 			zp->zp_checksum = spa_dedup_checksum(spa);
 			zio_pop_transforms(zio);
 			zio->io_stage = ZIO_STAGE_OPEN;
+			zio->io_bp_override = NULL;
 			BP_ZERO(bp);
 		} else {
 			zp->zp_dedup = B_FALSE;
